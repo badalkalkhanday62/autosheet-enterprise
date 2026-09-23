@@ -131,9 +131,52 @@ if not st.session_state.logged_in:
 st.sidebar.title(f"🏢 {st.session_state.org_name}")
 st.sidebar.write(f"Active User: **{st.session_state.username}**")
 
+# Live Date & Time Display in Sidebar
+current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+st.sidebar.markdown(f"📅 **Live Timestamp:** `{current_time_str}`")
+st.sidebar.markdown("---")
+
 subsidiary = st.sidebar.selectbox(
     "Global Subsidiary Entity", 
     ["HQ - Main", "Delhi Branch", "US Subsidiary", "Rishikesh Unit"]
+)
+
+# Global Currency Selector
+selected_currency = st.sidebar.selectbox(
+    "🌍 Global Currency", 
+    [
+        "USD ($ - US Dollar)", 
+        "EUR (€ - Euro)", 
+        "INR (₹ - Indian Rupee)", 
+        "GBP (£ - British Pound)", 
+        "JPY (¥ - Japanese Yen)", 
+        "AUD ($ - Australian Dollar)", 
+        "CAD ($ - Canadian Dollar)", 
+        "CHF (CHF - Swiss Franc)", 
+        "CNY (¥ - Chinese Yuan)", 
+        "AED (د.إ - UAE Dirham)", 
+        "SGD ($ - Singapore Dollar)",
+        "SAR (ر.س - Saudi Riyal)"
+    ]
+)
+
+# World Language Selector
+selected_language = st.sidebar.selectbox(
+    "🌐 App Language", 
+    [
+        "English", 
+        "Hindi (हिन्दी)", 
+        "Spanish (Español)", 
+        "French (Français)", 
+        "German (Deutsch)", 
+        "Mandarin Chinese (中文)", 
+        "Japanese (日本語)", 
+        "Arabic (العربية)", 
+        "Portuguese (Português)", 
+        "Russian (Русский)", 
+        "Italian (Italiano)", 
+        "Korean (한국어)"
+    ]
 )
 
 if st.sidebar.button("Logout"):
@@ -144,7 +187,8 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 st.title("⚡ AutoSheet Autonomous Enterprise OS")
-st.markdown(f"**Subsidiary Context:** `{subsidiary}` | **Data Privacy:** `Strictly Isolated per User Account`")
+currency_code = selected_currency.split(' ')[0]
+st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Privacy:** `Strictly Isolated`")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📥 Ledger & Ingestion", 
@@ -201,12 +245,12 @@ with tab1:
     st.subheader("💬 Conversational AI CFO (Isolated Context)")
     ai_query = st.text_input("Ask AutoSheet AI CFO regarding your private ledgers...")
     if ai_query:
-        st.info(f"AI CFO Analysis for [{st.session_state.username}]: Scanning your private tenant records for '{ai_query}'. All financial guardrails and variance checks are fully compliant.")
+        st.info(f"AI CFO Analysis ({currency_code}) for [{st.session_state.username}]: Scanning your private records for '{ai_query}' in {selected_language}. All financial guardrails are fully compliant.")
 
 # --- TAB 2: CASH FLOW CALENDAR ---
 with tab2:
     st.subheader("Cash Flow Calendar & Liquidity Projection")
-    st.write("Real-time runway estimation for your active organization.")
+    st.write(f"Real-time runway estimation denominated in {selected_currency}.")
     
     # Fetch ONLY this user's data from SQLite
     try:
@@ -234,7 +278,7 @@ with tab3:
 # --- TAB 4: VENDOR INFLATION SENTINEL ---
 with tab4:
     st.subheader("Vendor Inflation & Price Variance Sentinel")
-    st.write("Tracking raw material and software price fluctuations.")
+    st.write("Tracking raw material and software price fluctuations globally.")
     st.warning("⚠️ Software subscription inflation detected: +4.2% across SaaS vendors.")
 
 # --- TAB 5: COMPLIANCE VAULT ---

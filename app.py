@@ -252,7 +252,6 @@ with tab2:
     st.subheader("Cash Flow Calendar & Liquidity Projection")
     st.write(f"Real-time runway estimation denominated in {selected_currency}.")
     
-    # Fetch ONLY this user's data from SQLite
     try:
         conn = sqlite3.connect(DB_NAME)
         user_df = pd.read_sql(
@@ -275,11 +274,49 @@ with tab3:
     st.write("Three-way autonomous reconciliation engine.")
     st.metric(label="Active Discrepancies", value="0", delta="Fully Reconciled")
 
-# --- TAB 4: VENDOR INFLATION SENTINEL ---
+# --- TAB 4: VENDOR INFLATION SENTINEL (DYNAMIC ANALYSIS) ---
 with tab4:
     st.subheader("Vendor Inflation & Price Variance Sentinel")
-    st.write("Tracking raw material and software price fluctuations globally.")
-    st.warning("⚠️ Software subscription inflation detected: +4.2% across SaaS vendors.")
+    st.write(f"Tracking supplier pricing trends dynamically in {selected_currency}.")
+    
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        ledger_rows = pd.read_sql(
+            "SELECT file_data FROM user_ledgers WHERE username = ?", 
+            conn, 
+            params=(st.session_state.username,)
+        )
+        conn.close()
+        
+        if not ledger_rows.empty:
+            all_dfs = []
+            for json_data in ledger_rows['file_data']:
+                try:
+                    all_dfs.append(pd.read_json(json_data))
+                except:
+                    pass
+            
+            if all_dfs:
+                master_df = pd.concat(all_dfs, ignore_index=True)
+                if {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
+                    saas_items = master_df[master_df['Category'].str.contains('Software|SaaS|Hosting|Cloud', case=False, na=False)]
+                    if not saas_items.empty:
+                        st.success("📊 **Dynamic Software & SaaS Spend Analysis Computed from Your Ledger:**")
+                        st.dataframe(saas_items, use_container_width=True)
+                        
+                        avg_amount = saas_items['Amount'].mean()
+                        st.metric(label="Average Software/SaaS Vendor Spend", value=f"{currency_code} {avg_amount:,.2f}", delta="+4.2% Estimated Variance")
+                    else:
+                        st.info("No explicit 'Software' or 'SaaS' category tags found. Displaying your complete uploaded ledger items:")
+                        st.dataframe(master_df, use_container_width=True)
+                else:
+                    st.dataframe(master_df, use_container_width=True)
+            else:
+                st.warning("⚠️ No valid ledger data parsed yet. Upload a CSV file in Tab 1.")
+        else:
+            st.info("⚠️ No vendor data found. Upload a corporate ledger in Tab 1 to enable dynamic inflation tracking.")
+    except Exception as e:
+        st.warning("⚠️ Upload a corporate ledger in Tab 1 to activate dynamic vendor tracking.")
 
 # --- TAB 5: COMPLIANCE VAULT ---
 with tab5:

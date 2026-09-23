@@ -190,7 +190,7 @@ with tab1:
             img = Image.open(file)
             c1, c2 = st.columns([1, 1])
             with c1:
-                st.image(img, caption=f"Source Document: {file.name}", use_column_width=True)
+                st.image(img, caption=f"Source Document: {file.name}", use_container_width=True
             with c2:
                 st.markdown("### 🖼️ Document Security & Metadata")
                 st.write(f"**Format:** {img.format}")

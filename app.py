@@ -12,55 +12,63 @@ st.set_page_config(
     page_icon="⚡"
 )
 
-# Initialize Database & Secure Tenant Tables
+# Initialize Database & Secure Tenant Tables with v2 database name
+DB_NAME = "autosheet_enterprise_v2.db"
+
 def init_db():
-    conn = sqlite3.connect("autosheet_enterprise.db")
-    cursor = conn.cursor()
-    # Users table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT,
-            organization TEXT
-        )
-    """)
-    # Immutable audit logs table (per user)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS audit_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            timestamp TEXT,
-            action TEXT,
-            details TEXT
-        )
-    """)
-    # User-specific isolated ledgers table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_ledgers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            subsidiary TEXT,
-            filename TEXT,
-            file_data TEXT,
-            upload_date TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        # Users table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE,
+                password TEXT,
+                organization TEXT
+            )
+        """)
+        # Immutable audit logs table (per user)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                timestamp TEXT,
+                action TEXT,
+                details TEXT
+            )
+        """)
+        # User-specific isolated ledgers table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_ledgers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                subsidiary TEXT,
+                filename TEXT,
+                file_data TEXT,
+                upload_date TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"Database initialization error: {e}")
 
 init_db()
 
 # Action Logger
 def log_action(username, action, details):
-    conn = sqlite3.connect("autosheet_enterprise.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO audit_logs (username, timestamp, action, details) VALUES (?, ?, ?, ?)",
-        (username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), action, details)
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO audit_logs (username, timestamp, action, details) VALUES (?, ?, ?, ?)",
+            (username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), action, details)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Logging error: {e}")
 
 # Session State Initialization
 if "logged_in" not in st.session_state:
@@ -83,34 +91,40 @@ if not st.session_state.logged_in:
         org_name = st.text_input("Company / Organization Name")
 
     if st.button("Authenticate Session"):
-        conn = sqlite3.connect("autosheet_enterprise.db")
-        cursor = conn.cursor()
-        
-        if auth_mode == "Register Organization":
-            try:
-                cursor.execute(
-                    "INSERT INTO users (username, password, organization) VALUES (?, ?, ?)", 
-                    (username, password, org_name)
-                )
-                conn.commit()
-                st.success("Organization registered successfully! Please switch to Login.")
-            except sqlite3.IntegrityError:
-                st.error("Username already exists! Please choose another.")
+        if not username or not password:
+            st.error("Please enter both username and password.")
         else:
-            cursor.execute(
-                "SELECT organization FROM users WHERE username = ? AND password = ?", 
-                (username, password)
-            )
-            user_record = cursor.fetchone()
-            if user_record:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.session_state.org_name = user_record[0]
-                log_action(username, "Login", "User authenticated successfully.")
-                st.rerun()
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            
+            if auth_mode == "Register Organization":
+                if not org_name:
+                    st.error("Please enter your organization name.")
+                else:
+                    try:
+                        cursor.execute(
+                            "INSERT INTO users (username, password, organization) VALUES (?, ?, ?)", 
+                            (username, password, org_name)
+                        )
+                        conn.commit()
+                        st.success("Organization registered successfully! Please switch to Login above.")
+                    except sqlite3.IntegrityError:
+                        st.error("Username already exists! Please choose another.")
             else:
-                st.error("Invalid username or password.")
-        conn.close()
+                cursor.execute(
+                    "SELECT organization FROM users WHERE username = ? AND password = ?", 
+                    (username, password)
+                )
+                user_record = cursor.fetchone()
+                if user_record:
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.session_state.org_name = user_record[0]
+                    log_action(username, "Login", "User authenticated successfully.")
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password.")
+            conn.close()
     st.stop()
 
 # ================= MAIN APP COMMAND CENTER (LOGGED IN) =================
@@ -150,20 +164,23 @@ with tab1:
     
     if uploaded_file is not None:
         if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-            st.success(f"Successfully ingested ledger: {uploaded_file.name}")
-            st.dataframe(df, use_container_width=True)
-            
-            # Save strictly to this user's private database table
-            conn = sqlite3.connect("autosheet_enterprise.db")
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO user_ledgers (username, subsidiary, filename, file_data, upload_date) VALUES (?, ?, ?, ?, ?)",
-                (st.session_state.username, subsidiary, uploaded_file.name, df.to_json(), datetime.now().strftime("%Y-%m-%d"))
-            )
-            conn.commit()
-            conn.close()
-            log_action(st.session_state.username, "Ledger Ingested", f"Uploaded CSV ledger {uploaded_file.name}")
+            try:
+                df = pd.read_csv(uploaded_file)
+                st.success(f"Successfully ingested ledger: {uploaded_file.name}")
+                st.dataframe(df, use_container_width=True)
+                
+                # Save strictly to this user's private database table
+                conn = sqlite3.connect(DB_NAME)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO user_ledgers (username, subsidiary, filename, file_data, upload_date) VALUES (?, ?, ?, ?, ?)",
+                    (st.session_state.username, subsidiary, uploaded_file.name, df.to_json(), datetime.now().strftime("%Y-%m-%d"))
+                )
+                conn.commit()
+                conn.close()
+                log_action(st.session_state.username, "Ledger Ingested", f"Uploaded CSV ledger {uploaded_file.name}")
+            except Exception as e:
+                st.error(f"Error parsing CSV ledger: {e}")
         else:
             try:
                 img = Image.open(uploaded_file)
@@ -192,18 +209,21 @@ with tab2:
     st.write("Real-time runway estimation for your active organization.")
     
     # Fetch ONLY this user's data from SQLite
-    conn = sqlite3.connect("autosheet_enterprise.db")
-    user_df = pd.read_sql(
-        "SELECT filename, upload_date, subsidiary FROM user_ledgers WHERE username = ? AND subsidiary = ?", 
-        conn, 
-        params=(st.session_state.username, subsidiary)
-    )
-    conn.close()
-    
-    if not user_df.empty:
-        st.dataframe(user_df, use_container_width=True)
-    else:
-        st.info("No ledgers found for your account under this subsidiary. Upload a CSV file in Tab 1 to activate forecasting.")
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        user_df = pd.read_sql(
+            "SELECT filename, upload_date, subsidiary FROM user_ledgers WHERE username = ? AND subsidiary = ?", 
+            conn, 
+            params=(st.session_state.username, subsidiary)
+        )
+        conn.close()
+        
+        if not user_df.empty:
+            st.dataframe(user_df, use_container_width=True)
+        else:
+            st.info("No ledgers found for your account under this subsidiary. Upload a CSV file in Tab 1 to activate forecasting.")
+    except Exception as e:
+        st.info("Upload a ledger in Tab 1 to initialize your cash flow workspace.")
 
 # --- TAB 3: PROCUREMENT MATCHING ---
 with tab3:
@@ -222,11 +242,17 @@ with tab5:
     st.subheader("Compliance Vault & Secure Audit Logs")
     st.write("Immutable audit trail verifying your private session activity.")
     
-    conn = sqlite3.connect("autosheet_enterprise.db")
-    audit_df = pd.read_sql(
-        "SELECT timestamp, action, details FROM audit_logs WHERE username = ?", 
-        conn, 
-        params=(st.session_state.username,)
-    )
-    conn.close()
-    st.dataframe(audit_df, use_container_width=True)
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        audit_df = pd.read_sql(
+            "SELECT timestamp, action, details FROM audit_logs WHERE username = ?", 
+            conn, 
+            params=(st.session_state.username,)
+        )
+        conn.close()
+        if not audit_df.empty:
+            st.dataframe(audit_df, use_container_width=True)
+        else:
+            st.info("No audit logs recorded yet for this session.")
+    except Exception as e:
+        st.info("Audit trail will populate as you perform actions in the app.")

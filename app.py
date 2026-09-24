@@ -206,40 +206,46 @@ with tab1:
         type=["csv", "png", "jpg", "jpeg"]
     )
     
-    if uploaded_file is not None:
-        if uploaded_file.name.endswith('.csv'):
-            try:
-                df = pd.read_csv(uploaded_file)
-                st.success(f"Successfully ingested ledger: {uploaded_file.name}")
-                st.dataframe(df, use_container_width=True)
-                
-                # Save strictly to this user's private database table
-                conn = sqlite3.connect(DB_NAME)
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO user_ledgers (username, subsidiary, filename, file_data, upload_date) VALUES (?, ?, ?, ?, ?)",
-                    (st.session_state.username, subsidiary, uploaded_file.name, df.to_json(), datetime.now().strftime("%Y-%m-%d"))
-                )
-                conn.commit()
-                conn.close()
-                log_action(st.session_state.username, "Ledger Ingested", f"Uploaded CSV ledger {uploaded_file.name}")
-            except Exception as e:
-                st.error(f"Error parsing CSV ledger: {e}")
+    # Explicit Submit Button for Ingestion
+    submit_btn = st.button("🚀 Submit & Process Ingestion")
+    
+    if submit_btn:
+        if uploaded_file is not None:
+            if uploaded_file.name.endswith('.csv'):
+                try:
+                    df = pd.read_csv(uploaded_file)
+                    st.success(f"Successfully ingested ledger: {uploaded_file.name}")
+                    st.dataframe(df, use_container_width=True)
+                    
+                    # Save as CSV string to database for foolproof parsing
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO user_ledgers (username, subsidiary, filename, file_data, upload_date) VALUES (?, ?, ?, ?, ?)",
+                        (st.session_state.username, subsidiary, uploaded_file.name, df.to_csv(index=False), datetime.now().strftime("%Y-%m-%d"))
+                    )
+                    conn.commit()
+                    conn.close()
+                    log_action(st.session_state.username, "Ledger Ingested", f"Uploaded CSV ledger {uploaded_file.name}")
+                except Exception as e:
+                    st.error(f"Error parsing CSV ledger: {e}")
+            else:
+                try:
+                    img = Image.open(uploaded_file)
+                    st.success(f"Successfully ingested receipt asset: {uploaded_file.name}")
+                    c1, c2 = st.columns([1, 1])
+                    with c1:
+                        st.image(img, caption=f"Source Document: {uploaded_file.name}", use_container_width=True)
+                    with c2:
+                        st.markdown("### 🔍 Document Security & Metadata")
+                        st.write(f"**Format:** {img.format}")
+                        st.write(f"**Resolution:** {img.size[0]} x {img.size[1]} px")
+                        st.success("🔒 **Status:** Encrypted & logged into tenant compliance vault.")
+                        log_action(st.session_state.username, "Document Ingested", f"Processed secure asset: {uploaded_file.name}")
+                except Exception as e:
+                    st.error(f"Error processing image asset: {e}")
         else:
-            try:
-                img = Image.open(uploaded_file)
-                st.success(f"Successfully ingested receipt asset: {uploaded_file.name}")
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    st.image(img, caption=f"Source Document: {uploaded_file.name}", use_container_width=True)
-                with c2:
-                    st.markdown("### 🔍 Document Security & Metadata")
-                    st.write(f"**Format:** {img.format}")
-                    st.write(f"**Resolution:** {img.size[0]} x {img.size[1]} px")
-                    st.success("🔒 **Status:** Encrypted & logged into tenant compliance vault.")
-                    log_action(st.session_state.username, "Document Ingested", f"Processed secure asset: {uploaded_file.name}")
-            except Exception as e:
-                st.error(f"Error processing image asset: {e}")
+            st.warning("⚠️ Please upload a file before clicking submit.")
 
     st.markdown("---")
     st.subheader("💬 Conversational AI CFO (Isolated Context)")
@@ -264,9 +270,9 @@ with tab2:
         if not user_df.empty:
             st.dataframe(user_df, use_container_width=True)
         else:
-            st.info("No ledgers found for your account under this subsidiary. Upload a CSV file in Tab 1 to activate forecasting.")
+            st.info("No ledgers found for your account under this subsidiary. Upload and submit a CSV file in Tab 1 to activate forecasting.")
     except Exception as e:
-        st.info("Upload a ledger in Tab 1 to initialize your cash flow workspace.")
+        st.info("Upload and submit a ledger in Tab 1 to initialize your cash flow workspace.")
 
 # --- TAB 3: PROCUREMENT MATCHING ---
 with tab3:
@@ -274,7 +280,7 @@ with tab3:
     st.write("Three-way autonomous reconciliation engine.")
     st.metric(label="Active Discrepancies", value="0", delta="Fully Reconciled")
 
-# --- TAB 4: VENDOR INFLATION SENTINEL (DYNAMIC ANALYSIS) ---
+# --- TAB 4: VENDOR INFLATION SENTINEL (ROBUST CSV PARSING) ---
 with tab4:
     st.subheader("Vendor Inflation & Price Variance Sentinel")
     st.write(f"Tracking supplier pricing trends dynamically in {selected_currency}.")
@@ -290,11 +296,11 @@ with tab4:
         
         if not ledger_rows.empty:
             all_dfs = []
-            for json_data in ledger_rows['file_data']:
+            for csv_str in ledger_rows['file_data']:
                 try:
-                    all_dfs.append(pd.read_json(json_data))
-                except:
-                    pass
+                    all_dfs.append(pd.read_csv(io.StringIO(csv_str)))
+                except Exception as parse_err:
+                    print(f"Parsing error: {parse_err}")
             
             if all_dfs:
                 master_df = pd.concat(all_dfs, ignore_index=True)
@@ -312,11 +318,11 @@ with tab4:
                 else:
                     st.dataframe(master_df, use_container_width=True)
             else:
-                st.warning("⚠️ No valid ledger data parsed yet. Upload a CSV file in Tab 1.")
+                st.warning("⚠️ No valid ledger data parsed yet. Upload and submit a CSV file in Tab 1.")
         else:
-            st.info("⚠️ No vendor data found. Upload a corporate ledger in Tab 1 to enable dynamic inflation tracking.")
+            st.info("⚠️ No vendor data found. Upload and submit a corporate ledger in Tab 1 to enable dynamic inflation tracking.")
     except Exception as e:
-        st.warning("⚠️ Upload a corporate ledger in Tab 1 to activate dynamic vendor tracking.")
+        st.warning(f"⚠️ Error loading vendor data: {e}")
 
 # --- TAB 5: COMPLIANCE VAULT ---
 with tab5:

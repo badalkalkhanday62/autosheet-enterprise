@@ -166,7 +166,7 @@ if st.sidebar.button("Logout"):
 
 st.title("⚡ AutoSheet 5-Agent Autonomous Enterprise OS")
 currency_code = selected_currency.split(' ')[0]
-st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Auto-Sanitized Engine:** `Active 🟢`")
+st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Engine Status:** `Online 🟢`")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🤖 Agent 1: Ingestion & Vision", 
@@ -176,7 +176,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔒 Agent 5: Compliance Dossier"
 ])
 
-# Robust Data Fetcher with Automatic Column Normalization & Numeric Cleaning
+# Bulletproof Data Fetcher with Visible Error Handling
 def get_user_master_df():
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -186,26 +186,32 @@ def get_user_master_df():
             params=(st.session_state.username,)
         )
         conn.close()
-        if not ledger_rows.empty:
-            dfs = []
-            for csv_str in ledger_rows['file_data']:
+        
+        if ledger_rows.empty:
+            return pd.DataFrame()
+            
+        dfs = []
+        for csv_str in ledger_rows['file_data']:
+            if isinstance(csv_str, str) and len(csv_str.strip()) > 0:
                 d = pd.read_csv(io.StringIO(csv_str))
-                # Standardize column names (strip whitespace and title case)
                 d.columns = d.columns.str.strip().str.title()
                 dfs.append(d)
+                
+        if not dfs:
+            return pd.DataFrame()
             
-            master_df = pd.concat(dfs, ignore_index=True)
+        master_df = pd.concat(dfs, ignore_index=True)
+        
+        if 'Amount' in master_df.columns:
+            master_df['Amount'] = pd.to_numeric(
+                master_df['Amount'].astype(str).str.replace(r'[^0-9.\-]', '', regex=True), 
+                errors='coerce'
+            ).fillna(0.0)
             
-            # Ensure Amount column is strictly numeric
-            if 'Amount' in master_df.columns:
-                master_df['Amount'] = pd.to_numeric(
-                    master_df['Amount'].astype(str).str.replace(r'[^0-9.\-]', '', regex=True), 
-                    errors='coerce'
-                ).fillna(0.0)
-            return master_df
+        return master_df
     except Exception as e:
-        print(f"Error fetching/cleaning data: {e}")
-    return pd.DataFrame()
+        st.error(f"⚠️ Database Read Error in Agent Engine: {e}")
+        return pd.DataFrame()
 
 # --- TAB 1: AGENT 1 (INGESTION & VISION) ---
 with tab1:
@@ -228,7 +234,7 @@ with tab1:
                     missing_cols = required_cols - set(df.columns)
                     
                     if missing_cols:
-                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`. Required: Category, Vendor, Amount.")
+                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`. Your CSV must include: Category, Vendor, Amount.")
                     else:
                         st.success(f"✅ [Agent 1]: Successfully ingested {uploaded_file.name}")
                         st.dataframe(df, use_container_width=True)
@@ -264,26 +270,30 @@ with tab2:
     st.write("Scans unified ledger data and **highlights fraudulent or high-risk transactions in red**.")
     
     master_df = get_user_master_df()
-    if not master_df.empty and 'Amount' in master_df.columns:
-        mean_val = master_df['Amount'].mean()
-        std_val = master_df['Amount'].std() if len(master_df) > 1 else 0
-        threshold = mean_val + (1.5 * std_val)
-        
-        def highlight_fraud(row):
-            if row['Amount'] > threshold and threshold > 0:
-                return ['background-color: #ff4b4b; color: white'] * len(row)
-            return [''] * len(row)
-        
-        styled_df = master_df.style.apply(highlight_fraud, axis=1)
-        st.dataframe(styled_df, use_container_width=True)
-        
-        fraud_count = len(master_df[master_df['Amount'] > threshold]) if threshold > 0 else 0
-        if fraud_count > 0:
-            st.markdown(f"🔴 **[Agent 2 Alert]:** `{fraud_count}` high-risk transaction(s) flagged and highlighted in red.")
+    if not master_df.empty:
+        if 'Amount' in master_df.columns:
+            mean_val = master_df['Amount'].mean()
+            std_val = master_df['Amount'].std() if len(master_df) > 1 else 0
+            threshold = mean_val + (1.5 * std_val)
+            
+            def highlight_fraud(row):
+                if row['Amount'] > threshold and threshold > 0:
+                    return ['background-color: #ff4b4b; color: white'] * len(row)
+                return [''] * len(row)
+            
+            styled_df = master_df.style.apply(highlight_fraud, axis=1)
+            st.dataframe(styled_df, use_container_width=True)
+            
+            fraud_count = len(master_df[master_df['Amount'] > threshold]) if threshold > 0 else 0
+            if fraud_count > 0:
+                st.markdown(f"🔴 **[Agent 2 Alert]:** `{fraud_count}` high-risk transaction(s) flagged and highlighted in red.")
+            else:
+                st.success("🟢 **[Agent 2 Status]:** All transactions verified clean.")
         else:
-            st.success("🟢 **[Agent 2 Status]:** All transactions verified clean.")
+            st.warning("⚠️ Data loaded, but 'Amount' column is missing or unreadable.")
+            st.dataframe(master_df, use_container_width=True)
     else:
-        st.info("⏳ Waiting for data. Upload and run pipeline in Tab 1.")
+        st.info("⏳ No ledger data found in database. Upload and run pipeline in Tab 1 first.")
 
 # --- TAB 3: AGENT 3 (GLOBAL CASH-SWEEP) ---
 with tab3:
@@ -291,22 +301,26 @@ with tab3:
     st.write(f"Monitors treasury capital velocity in {selected_currency} across all synchronized records.")
     
     master_df = get_user_master_df()
-    if not master_df.empty and 'Amount' in master_df.columns:
-        total_vol = master_df['Amount'].sum()
-        savings = total_vol * 0.035
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Managed Capital", f"{currency_code} {total_vol:,.2f}")
-        c2.metric("Automated Cash-Sweep Savings", f"{currency_code} {savings:,.2f}", delta="Optimized")
-        
-        if total_vol <= 0:
-            c3.metric("Liquidity Status", "CRITICAL DEFICIT", delta="🔴 Action Required", delta_color="inverse")
-            st.error("🔴 **[Agent 3 Treasury Alert]:** Zero or negative capital volume detected.")
+    if not master_df.empty:
+        if 'Amount' in master_df.columns:
+            total_vol = master_df['Amount'].sum()
+            savings = total_vol * 0.035
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Managed Capital", f"{currency_code} {total_vol:,.2f}")
+            c2.metric("Automated Cash-Sweep Savings", f"{currency_code} {savings:,.2f}", delta="Optimized")
+            
+            if total_vol <= 0:
+                c3.metric("Liquidity Status", "CRITICAL DEFICIT", delta="🔴 Action Required", delta_color="inverse")
+                st.error("🔴 **[Agent 3 Treasury Alert]:** Zero or negative capital volume detected.")
+            else:
+                c3.metric("Runway Status", "Stable (18+ Months)", delta="AI Verified")
+                st.success("🟢 **[Agent 3 Status]:** Liquidity velocity optimal.")
         else:
-            c3.metric("Runway Status", "Stable (18+ Months)", delta="AI Verified")
-            st.success("🟢 **[Agent 3 Status]:** Liquidity velocity optimal.")
+            st.warning("⚠️ Data loaded, but 'Amount' column is missing for cash-sweep calculations.")
+            st.dataframe(master_df, use_container_width=True)
     else:
-        st.info("⏳ Ingest data in Tab 1 to activate Agent 3 liquidity AI.")
+        st.info("⏳ No ledger data found in database. Upload and run pipeline in Tab 1 first.")
 
 # --- TAB 4: AGENT 4 (VENDOR INFLATION) ---
 with tab4:
@@ -314,24 +328,27 @@ with tab4:
     st.write("Audits supplier pricing and highlights abnormal vendor price spikes in bright red.")
     
     master_df = get_user_master_df()
-    if not master_df.empty and {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
-        v_mean = master_df['Amount'].mean()
-        
-        def highlight_vendor_inflation(row):
-            if row['Amount'] > (v_mean * 1.5) and v_mean > 0:
-                return ['background-color: #ff4b4b; color: white'] * len(row)
-            return [''] * len(row)
+    if not master_df.empty:
+        if {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
+            v_mean = master_df['Amount'].mean()
             
-        styled_vendor_df = master_df.style.apply(highlight_vendor_inflation, axis=1)
-        st.dataframe(styled_vendor_df, use_container_width=True)
-        
-        high_vendors = len(master_df[master_df['Amount'] > (v_mean * 1.5)]) if v_mean > 0 else 0
-        if high_vendors > 0:
-            st.markdown(f"🔴 **[Agent 4 Inflation Alert]:** `{high_vendors}` vendor payout(s) exceeding normal cost thresholds highlighted in red.")
+            def highlight_vendor_inflation(row):
+                if row['Amount'] > (v_mean * 1.5) and v_mean > 0:
+                    return ['background-color: #ff4b4b; color: white'] * len(row)
+                return [''] * len(row)
+                
+            styled_vendor_df = master_df.style.apply(highlight_vendor_inflation, axis=1)
+            st.dataframe(styled_vendor_df, use_container_width=True)
+            
+            high_vendors = len(master_df[master_df['Amount'] > (v_mean * 1.5)]) if v_mean > 0 else 0
+            if high_vendors > 0:
+                st.markdown(f"🔴 **[Agent 4 Inflation Alert]:** `{high_vendors}` vendor payout(s) exceeding normal cost thresholds highlighted in red.")
+            else:
+                st.success("🟢 **[Agent 4 Status]:** Stable vendor pricing observed.")
         else:
-            st.success("🟢 **[Agent 4 Status]:** Stable vendor pricing observed.")
+            st.dataframe(master_df, use_container_width=True)
     else:
-        st.info("⏳ Waiting for pipeline data. Upload ledgers in Tab 1.")
+        st.info("⏳ No ledger data found in database. Upload and run pipeline in Tab 1 first.")
 
 # --- TAB 5: AGENT 5 (COMPLIANCE DOSSIER) ---
 with tab5:

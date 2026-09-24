@@ -78,25 +78,30 @@ if "org_name" not in st.session_state:
 # ================= AUTHENTICATION SCREEN =================
 if not st.session_state.logged_in:
     st.title("⚡ AutoSheet 5-Agent Master OS - Secure Portal")
-    auth_mode = st.radio("Authentication Mode", ["Login", "Register Organization"])
+    auth_mode = st.radio("Authentication Mode", ["Login", "Register Organization", "Forgot Password"])
     
     username = st.text_input("Username / Email")
-    password = st.text_input("Password", type="password")
+    
+    if auth_mode != "Forgot Password":
+        password = st.text_input("Password", type="password")
     
     org_name = ""
     if auth_mode == "Register Organization":
         org_name = st.text_input("Company / Organization Name")
+    elif auth_mode == "Forgot Password":
+        org_name = st.text_input("Registered Company / Organization Name (For Verification)")
+        new_password = st.text_input("New Secure Password", type="password")
 
     if st.button("Authenticate Session"):
-        if not username or not password:
-            st.error("Please enter both username and password.")
+        if not username:
+            st.error("Please enter your username.")
         else:
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
             
             if auth_mode == "Register Organization":
-                if not org_name:
-                    st.error("Please enter your organization name.")
+                if not org_name or not password:
+                    st.error("Please enter both organization name and password.")
                 else:
                     try:
                         cursor.execute(
@@ -107,20 +112,44 @@ if not st.session_state.logged_in:
                         st.success("Organization registered successfully! Please switch to Login above.")
                     except sqlite3.IntegrityError:
                         st.error("Username already exists! Please choose another.")
-            else:
-                cursor.execute(
-                    "SELECT organization FROM users WHERE username = ? AND password = ?", 
-                    (username, password)
-                )
-                user_record = cursor.fetchone()
-                if user_record:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.session_state.org_name = user_record[0]
-                    log_action(username, "Login", "User authenticated successfully.")
-                    st.rerun()
+            
+            elif auth_mode == "Forgot Password":
+                if not org_name or not new_password:
+                    st.error("Please enter your organization name and new password.")
                 else:
-                    st.error("Invalid username or password.")
+                    cursor.execute(
+                        "SELECT id FROM users WHERE username = ? AND organization = ?", 
+                        (username, org_name)
+                    )
+                    user_record = cursor.fetchone()
+                    if user_record:
+                        cursor.execute(
+                            "UPDATE users SET password = ? WHERE username = ?", 
+                            (new_password, username)
+                        )
+                        conn.commit()
+                        log_action(username, "Password Reset", "User successfully reset account password.")
+                        st.success("Password updated successfully! Please switch to Login above.")
+                    else:
+                        st.error("Verification failed: Username and Organization Name do not match our records.")
+            
+            else: # Login Mode
+                if not password:
+                    st.error("Please enter your password.")
+                else:
+                    cursor.execute(
+                        "SELECT organization FROM users WHERE username = ? AND password = ?", 
+                        (username, password)
+                    )
+                    user_record = cursor.fetchone()
+                    if user_record:
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.session_state.org_name = user_record[0]
+                        log_action(username, "Login", "User authenticated successfully.")
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password.")
             conn.close()
     st.stop()
 
@@ -166,7 +195,7 @@ if st.sidebar.button("Logout"):
 
 st.title("⚡ AutoSheet 5-Agent Autonomous Enterprise OS")
 currency_code = selected_currency.split(' ')[0]
-st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Engine Status:** `Online 🟢`")
+st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Recovery Engine:** `Active 🛡️`")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🤖 Agent 1: Ingestion & Vision", 
@@ -176,7 +205,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔒 Agent 5: Compliance Dossier"
 ])
 
-# Bulletproof Data Fetcher with Visible Error Handling
+# Universal Data Fetcher with Auto-Sanitization
 def get_user_master_df():
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -210,7 +239,7 @@ def get_user_master_df():
             
         return master_df
     except Exception as e:
-        st.error(f"⚠️ Database Read Error in Agent Engine: {e}")
+        st.error(f"⚠️ Database Read Error: {e}")
         return pd.DataFrame()
 
 # --- TAB 1: AGENT 1 (INGESTION & VISION) ---
@@ -234,7 +263,7 @@ with tab1:
                     missing_cols = required_cols - set(df.columns)
                     
                     if missing_cols:
-                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`. Your CSV must include: Category, Vendor, Amount.")
+                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`.")
                     else:
                         st.success(f"✅ [Agent 1]: Successfully ingested {uploaded_file.name}")
                         st.dataframe(df, use_container_width=True)
@@ -270,30 +299,26 @@ with tab2:
     st.write("Scans unified ledger data and **highlights fraudulent or high-risk transactions in red**.")
     
     master_df = get_user_master_df()
-    if not master_df.empty:
-        if 'Amount' in master_df.columns:
-            mean_val = master_df['Amount'].mean()
-            std_val = master_df['Amount'].std() if len(master_df) > 1 else 0
-            threshold = mean_val + (1.5 * std_val)
-            
-            def highlight_fraud(row):
-                if row['Amount'] > threshold and threshold > 0:
-                    return ['background-color: #ff4b4b; color: white'] * len(row)
-                return [''] * len(row)
-            
-            styled_df = master_df.style.apply(highlight_fraud, axis=1)
-            st.dataframe(styled_df, use_container_width=True)
-            
-            fraud_count = len(master_df[master_df['Amount'] > threshold]) if threshold > 0 else 0
-            if fraud_count > 0:
-                st.markdown(f"🔴 **[Agent 2 Alert]:** `{fraud_count}` high-risk transaction(s) flagged and highlighted in red.")
-            else:
-                st.success("🟢 **[Agent 2 Status]:** All transactions verified clean.")
+    if not master_df.empty and 'Amount' in master_df.columns:
+        mean_val = master_df['Amount'].mean()
+        std_val = master_df['Amount'].std() if len(master_df) > 1 else 0
+        threshold = mean_val + (1.5 * std_val)
+        
+        def highlight_fraud(row):
+            if row['Amount'] > threshold and threshold > 0:
+                return ['background-color: #ff4b4b; color: white'] * len(row)
+            return [''] * len(row)
+        
+        styled_df = master_df.style.apply(highlight_fraud, axis=1)
+        st.dataframe(styled_df, use_container_width=True)
+        
+        fraud_count = len(master_df[master_df['Amount'] > threshold]) if threshold > 0 else 0
+        if fraud_count > 0:
+            st.markdown(f"🔴 **[Agent 2 Alert]:** `{fraud_count}` high-risk transaction(s) flagged and highlighted in red.")
         else:
-            st.warning("⚠️ Data loaded, but 'Amount' column is missing or unreadable.")
-            st.dataframe(master_df, use_container_width=True)
+            st.success("🟢 **[Agent 2 Status]:** All transactions verified clean.")
     else:
-        st.info("⏳ No ledger data found in database. Upload and run pipeline in Tab 1 first.")
+        st.info("⏳ Waiting for data. Upload and run pipeline in Tab 1.")
 
 # --- TAB 3: AGENT 3 (GLOBAL CASH-SWEEP) ---
 with tab3:
@@ -301,26 +326,22 @@ with tab3:
     st.write(f"Monitors treasury capital velocity in {selected_currency} across all synchronized records.")
     
     master_df = get_user_master_df()
-    if not master_df.empty:
-        if 'Amount' in master_df.columns:
-            total_vol = master_df['Amount'].sum()
-            savings = total_vol * 0.035
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Managed Capital", f"{currency_code} {total_vol:,.2f}")
-            c2.metric("Automated Cash-Sweep Savings", f"{currency_code} {savings:,.2f}", delta="Optimized")
-            
-            if total_vol <= 0:
-                c3.metric("Liquidity Status", "CRITICAL DEFICIT", delta="🔴 Action Required", delta_color="inverse")
-                st.error("🔴 **[Agent 3 Treasury Alert]:** Zero or negative capital volume detected.")
-            else:
-                c3.metric("Runway Status", "Stable (18+ Months)", delta="AI Verified")
-                st.success("🟢 **[Agent 3 Status]:** Liquidity velocity optimal.")
+    if not master_df.empty and 'Amount' in master_df.columns:
+        total_vol = master_df['Amount'].sum()
+        savings = total_vol * 0.035
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Managed Capital", f"{currency_code} {total_vol:,.2f}")
+        c2.metric("Automated Cash-Sweep Savings", f"{currency_code} {savings:,.2f}", delta="Optimized")
+        
+        if total_vol <= 0:
+            c3.metric("Liquidity Status", "CRITICAL DEFICIT", delta="🔴 Action Required", delta_color="inverse")
+            st.error("🔴 **[Agent 3 Treasury Alert]:** Zero or negative capital volume detected.")
         else:
-            st.warning("⚠️ Data loaded, but 'Amount' column is missing for cash-sweep calculations.")
-            st.dataframe(master_df, use_container_width=True)
+            c3.metric("Runway Status", "Stable (18+ Months)", delta="AI Verified")
+            st.success("🟢 **[Agent 3 Status]:** Liquidity velocity optimal.")
     else:
-        st.info("⏳ No ledger data found in database. Upload and run pipeline in Tab 1 first.")
+        st.info("⏳ Ingest data in Tab 1 to activate Agent 3 liquidity AI.")
 
 # --- TAB 4: AGENT 4 (VENDOR INFLATION) ---
 with tab4:
@@ -328,27 +349,24 @@ with tab4:
     st.write("Audits supplier pricing and highlights abnormal vendor price spikes in bright red.")
     
     master_df = get_user_master_df()
-    if not master_df.empty:
-        if {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
-            v_mean = master_df['Amount'].mean()
+    if not master_df.empty and {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
+        v_mean = master_df['Amount'].mean()
+        
+        def highlight_vendor_inflation(row):
+            if row['Amount'] > (v_mean * 1.5) and v_mean > 0:
+                return ['background-color: #ff4b4b; color: white'] * len(row)
+            return [''] * len(row)
             
-            def highlight_vendor_inflation(row):
-                if row['Amount'] > (v_mean * 1.5) and v_mean > 0:
-                    return ['background-color: #ff4b4b; color: white'] * len(row)
-                return [''] * len(row)
-                
-            styled_vendor_df = master_df.style.apply(highlight_vendor_inflation, axis=1)
-            st.dataframe(styled_vendor_df, use_container_width=True)
-            
-            high_vendors = len(master_df[master_df['Amount'] > (v_mean * 1.5)]) if v_mean > 0 else 0
-            if high_vendors > 0:
-                st.markdown(f"🔴 **[Agent 4 Inflation Alert]:** `{high_vendors}` vendor payout(s) exceeding normal cost thresholds highlighted in red.")
-            else:
-                st.success("🟢 **[Agent 4 Status]:** Stable vendor pricing observed.")
+        styled_vendor_df = master_df.style.apply(highlight_vendor_inflation, axis=1)
+        st.dataframe(styled_vendor_df, use_container_width=True)
+        
+        high_vendors = len(master_df[master_df['Amount'] > (v_mean * 1.5)]) if v_mean > 0 else 0
+        if high_vendors > 0:
+            st.markdown(f"🔴 **[Agent 4 Inflation Alert]:** `{high_vendors}` vendor payout(s) exceeding normal cost thresholds highlighted in red.")
         else:
-            st.dataframe(master_df, use_container_width=True)
+            st.success("🟢 **[Agent 4 Status]:** Stable vendor pricing observed.")
     else:
-        st.info("⏳ No ledger data found in database. Upload and run pipeline in Tab 1 first.")
+        st.info("⏳ Waiting for pipeline data. Upload ledgers in Tab 1.")
 
 # --- TAB 5: AGENT 5 (COMPLIANCE DOSSIER) ---
 with tab5:
@@ -366,7 +384,7 @@ with tab5:
         
         if not audit_df.empty:
             def highlight_audit_errors(row):
-                if 'Error' in str(row['details']) or 'Logout' in str(row['action']):
+                if 'Error' in str(row['details']) or 'Logout' in str(row['action']) or 'Reset' in str(row['action']):
                     return ['background-color: #ff4b4b; color: white'] * len(row)
                 return [''] * len(row)
                 

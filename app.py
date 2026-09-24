@@ -166,7 +166,7 @@ if st.sidebar.button("Logout"):
 
 st.title("⚡ AutoSheet 5-Agent Autonomous Enterprise OS")
 currency_code = selected_currency.split(' ')[0]
-st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Unified AI Sync:** `Active 🟢`")
+st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Auto-Sanitized Engine:** `Active 🟢`")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🤖 Agent 1: Ingestion & Vision", 
@@ -176,7 +176,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔒 Agent 5: Compliance Dossier"
 ])
 
-# Universal Global Data Fetcher (Bypasses subsidiary lock so all agents see uploaded files)
+# Robust Data Fetcher with Automatic Column Normalization & Numeric Cleaning
 def get_user_master_df():
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -187,16 +187,30 @@ def get_user_master_df():
         )
         conn.close()
         if not ledger_rows.empty:
-            dfs = [pd.read_csv(io.StringIO(csv_str)) for csv_str in ledger_rows['file_data']]
-            return pd.concat(dfs, ignore_index=True)
+            dfs = []
+            for csv_str in ledger_rows['file_data']:
+                d = pd.read_csv(io.StringIO(csv_str))
+                # Standardize column names (strip whitespace and title case)
+                d.columns = d.columns.str.strip().str.title()
+                dfs.append(d)
+            
+            master_df = pd.concat(dfs, ignore_index=True)
+            
+            # Ensure Amount column is strictly numeric
+            if 'Amount' in master_df.columns:
+                master_df['Amount'] = pd.to_numeric(
+                    master_df['Amount'].astype(str).str.replace(r'[^0-9.\-]', '', regex=True), 
+                    errors='coerce'
+                ).fillna(0.0)
+            return master_df
     except Exception as e:
-        print(f"Error fetching data: {e}")
+        print(f"Error fetching/cleaning data: {e}")
     return pd.DataFrame()
 
 # --- TAB 1: AGENT 1 (INGESTION & VISION) ---
 with tab1:
     st.subheader("🤖 Agent 1: Autonomous Ingestion & Normalization Engine")
-    st.write("Upload raw corporate ledgers. Agent 1 validates schema and distributes telemetry across all 5 AIs.")
+    st.write("Upload raw corporate ledgers. Agent 1 cleans columns and synchronizes telemetry across all 5 AIs.")
     
     uploaded_file = st.file_uploader(
         "Upload Corporate Ledger (CSV) or Receipt Asset (Image)", 
@@ -208,11 +222,13 @@ with tab1:
             if uploaded_file.name.endswith('.csv'):
                 try:
                     df = pd.read_csv(uploaded_file)
+                    df.columns = df.columns.str.strip().str.title()
+                    
                     required_cols = {'Category', 'Vendor', 'Amount'}
                     missing_cols = required_cols - set(df.columns)
                     
                     if missing_cols:
-                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`.")
+                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`. Required: Category, Vendor, Amount.")
                     else:
                         st.success(f"✅ [Agent 1]: Successfully ingested {uploaded_file.name}")
                         st.dataframe(df, use_container_width=True)
@@ -228,7 +244,7 @@ with tab1:
                         
                         log_action(st.session_state.username, "Agent 1 Pipeline", f"Successfully ingested {uploaded_file.name}")
                         st.balloons()
-                        st.info("✨ **Pipeline Complete:** All 5 AIs are now synchronized. Check Tabs 2, 3, 4, and 5!")
+                        st.info("✨ **Pipeline Complete:** All 5 AIs are fully synchronized. Check Tabs 2, 3, 4, and 5!")
                 except Exception as e:
                     st.error(f"🔴 **[Agent 1 Fatal Error]:** {e}")
             else:
@@ -254,14 +270,14 @@ with tab2:
         threshold = mean_val + (1.5 * std_val)
         
         def highlight_fraud(row):
-            if row['Amount'] > threshold:
+            if row['Amount'] > threshold and threshold > 0:
                 return ['background-color: #ff4b4b; color: white'] * len(row)
             return [''] * len(row)
         
         styled_df = master_df.style.apply(highlight_fraud, axis=1)
         st.dataframe(styled_df, use_container_width=True)
         
-        fraud_count = len(master_df[master_df['Amount'] > threshold])
+        fraud_count = len(master_df[master_df['Amount'] > threshold]) if threshold > 0 else 0
         if fraud_count > 0:
             st.markdown(f"🔴 **[Agent 2 Alert]:** `{fraud_count}` high-risk transaction(s) flagged and highlighted in red.")
         else:
@@ -283,9 +299,9 @@ with tab3:
         c1.metric("Total Managed Capital", f"{currency_code} {total_vol:,.2f}")
         c2.metric("Automated Cash-Sweep Savings", f"{currency_code} {savings:,.2f}", delta="Optimized")
         
-        if total_vol < 100:
+        if total_vol <= 0:
             c3.metric("Liquidity Status", "CRITICAL DEFICIT", delta="🔴 Action Required", delta_color="inverse")
-            st.error("🔴 **[Agent 3 Treasury Alert]:** Low capital volume detected. Cash drag risk is elevated.")
+            st.error("🔴 **[Agent 3 Treasury Alert]:** Zero or negative capital volume detected.")
         else:
             c3.metric("Runway Status", "Stable (18+ Months)", delta="AI Verified")
             st.success("🟢 **[Agent 3 Status]:** Liquidity velocity optimal.")
@@ -295,21 +311,21 @@ with tab3:
 # --- TAB 4: AGENT 4 (VENDOR INFLATION) ---
 with tab4:
     st.subheader("📈 Agent 4: Vendor Cost Creep & SaaS Inflation AI")
-    st.write(f"Audits supplier pricing and highlights abnormal vendor price spikes in bright red.")
+    st.write("Audits supplier pricing and highlights abnormal vendor price spikes in bright red.")
     
     master_df = get_user_master_df()
     if not master_df.empty and {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
         v_mean = master_df['Amount'].mean()
         
         def highlight_vendor_inflation(row):
-            if row['Amount'] > (v_mean * 1.5):
+            if row['Amount'] > (v_mean * 1.5) and v_mean > 0:
                 return ['background-color: #ff4b4b; color: white'] * len(row)
             return [''] * len(row)
             
         styled_vendor_df = master_df.style.apply(highlight_vendor_inflation, axis=1)
         st.dataframe(styled_vendor_df, use_container_width=True)
         
-        high_vendors = len(master_df[master_df['Amount'] > (v_mean * 1.5)])
+        high_vendors = len(master_df[master_df['Amount'] > (v_mean * 1.5)]) if v_mean > 0 else 0
         if high_vendors > 0:
             st.markdown(f"🔴 **[Agent 4 Inflation Alert]:** `{high_vendors}` vendor payout(s) exceeding normal cost thresholds highlighted in red.")
         else:

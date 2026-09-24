@@ -166,7 +166,7 @@ if st.sidebar.button("Logout"):
 
 st.title("⚡ AutoSheet 5-Agent Autonomous Enterprise OS")
 currency_code = selected_currency.split(' ')[0]
-st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Multi-AI Red Highlighting:** `Active 🔴`")
+st.markdown(f"**Subsidiary:** `{subsidiary}` | **Currency:** `{currency_code}` | **Language:** `{selected_language}` | **Unified AI Sync:** `Active 🟢`")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🤖 Agent 1: Ingestion & Vision", 
@@ -176,27 +176,27 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔒 Agent 5: Compliance Dossier"
 ])
 
-# Helper function to fetch user dataframe
+# Universal Global Data Fetcher (Bypasses subsidiary lock so all agents see uploaded files)
 def get_user_master_df():
     try:
         conn = sqlite3.connect(DB_NAME)
         ledger_rows = pd.read_sql(
-            "SELECT file_data FROM user_ledgers WHERE username = ? AND subsidiary = ?", 
+            "SELECT file_data FROM user_ledgers WHERE username = ?", 
             conn, 
-            params=(st.session_state.username, subsidiary)
+            params=(st.session_state.username,)
         )
         conn.close()
         if not ledger_rows.empty:
             dfs = [pd.read_csv(io.StringIO(csv_str)) for csv_str in ledger_rows['file_data']]
             return pd.concat(dfs, ignore_index=True)
-    except:
-        pass
+    except Exception as e:
+        print(f"Error fetching data: {e}")
     return pd.DataFrame()
 
-# --- TAB 1: AGENT 1 (INGESTION & VISION WITH RED SCHEMA ALERTS) ---
+# --- TAB 1: AGENT 1 (INGESTION & VISION) ---
 with tab1:
     st.subheader("🤖 Agent 1: Autonomous Ingestion & Normalization Engine")
-    st.write("Upload raw corporate ledgers. Agent 1 validates schema and triggers red warnings if columns are missing.")
+    st.write("Upload raw corporate ledgers. Agent 1 validates schema and distributes telemetry across all 5 AIs.")
     
     uploaded_file = st.file_uploader(
         "Upload Corporate Ledger (CSV) or Receipt Asset (Image)", 
@@ -208,15 +208,13 @@ with tab1:
             if uploaded_file.name.endswith('.csv'):
                 try:
                     df = pd.read_csv(uploaded_file)
-                    
-                    # Agent 1 Red Schema Validation Check
                     required_cols = {'Category', 'Vendor', 'Amount'}
                     missing_cols = required_cols - set(df.columns)
                     
                     if missing_cols:
-                        st.error(f"🔴 **[Agent 1 Schema Error]:** Uploaded ledger is missing mandatory financial columns: `{missing_cols}`. Please reformat your CSV!")
+                        st.error(f"🔴 **[Agent 1 Schema Error]:** Missing columns: `{missing_cols}`.")
                     else:
-                        st.success(f"✅ [Agent 1]: Successfully ingested and normalized {uploaded_file.name}")
+                        st.success(f"✅ [Agent 1]: Successfully ingested {uploaded_file.name}")
                         st.dataframe(df, use_container_width=True)
                         
                         conn = sqlite3.connect(DB_NAME)
@@ -230,23 +228,24 @@ with tab1:
                         
                         log_action(st.session_state.username, "Agent 1 Pipeline", f"Successfully ingested {uploaded_file.name}")
                         st.balloons()
-                        st.info("✨ **Pipeline Complete:** All 5 AIs have analyzed your data. Review Tabs 2-5 for red threat highlights.")
+                        st.info("✨ **Pipeline Complete:** All 5 AIs are now synchronized. Check Tabs 2, 3, 4, and 5!")
                 except Exception as e:
-                    st.error(f"🔴 **[Agent 1 Fatal Error]:** Failed to parse CSV file: {e}")
+                    st.error(f"🔴 **[Agent 1 Fatal Error]:** {e}")
             else:
                 try:
                     img = Image.open(uploaded_file)
                     st.success(f"✅ [Agent 1 - Vision]: Successfully processed receipt asset: {uploaded_file.name}")
                     st.image(img, caption=f"Source Document: {uploaded_file.name}", width=400)
+                    log_action(st.session_state.username, "Vision Ingested", f"Processed asset {uploaded_file.name}")
                 except Exception as e:
                     st.error(f"🔴 [Agent 1 Vision Error]: {e}")
         else:
             st.warning("⚠️ Please upload a file before running the pipeline.")
 
-# --- TAB 2: AGENT 2 (FORENSIC FRAUD SHIELD WITH RED HIGHLIGHTING) ---
+# --- TAB 2: AGENT 2 (FORENSIC FRAUD SHIELD) ---
 with tab2:
     st.subheader("🛡️ Agent 2: Forensic Fraud & Anomaly Detection AI")
-    st.write("Automatically scans ledger data and **highlights fraudulent or high-risk transactions in red**.")
+    st.write("Scans unified ledger data and **highlights fraudulent or high-risk transactions in red**.")
     
     master_df = get_user_master_df()
     if not master_df.empty and 'Amount' in master_df.columns:
@@ -268,12 +267,12 @@ with tab2:
         else:
             st.success("🟢 **[Agent 2 Status]:** All transactions verified clean.")
     else:
-        st.info("⏳ Waiting for data. Run pipeline in Tab 1.")
+        st.info("⏳ Waiting for data. Upload and run pipeline in Tab 1.")
 
-# --- TAB 3: AGENT 3 (GLOBAL CASH-SWEEP WITH RED LIQUIDITY ALERTS) ---
+# --- TAB 3: AGENT 3 (GLOBAL CASH-SWEEP) ---
 with tab3:
     st.subheader("💸 Agent 3: Autonomous Global Cash-Sweep & Liquidity AI")
-    st.write(f"Monitors treasury capital velocity in {selected_currency} and highlights cash drag in red.")
+    st.write(f"Monitors treasury capital velocity in {selected_currency} across all synchronized records.")
     
     master_df = get_user_master_df()
     if not master_df.empty and 'Amount' in master_df.columns:
@@ -284,20 +283,19 @@ with tab3:
         c1.metric("Total Managed Capital", f"{currency_code} {total_vol:,.2f}")
         c2.metric("Automated Cash-Sweep Savings", f"{currency_code} {savings:,.2f}", delta="Optimized")
         
-        # Red liquidity warning if total volume is abnormally low/high deficit risk
         if total_vol < 100:
             c3.metric("Liquidity Status", "CRITICAL DEFICIT", delta="🔴 Action Required", delta_color="inverse")
-            st.error("🔴 **[Agent 3 Treasury Alert]:** Low capital volume detected across subsidiary accounts. Cash drag risk is elevated.")
+            st.error("🔴 **[Agent 3 Treasury Alert]:** Low capital volume detected. Cash drag risk is elevated.")
         else:
             c3.metric("Runway Status", "Stable (18+ Months)", delta="AI Verified")
             st.success("🟢 **[Agent 3 Status]:** Liquidity velocity optimal.")
     else:
         st.info("⏳ Ingest data in Tab 1 to activate Agent 3 liquidity AI.")
 
-# --- TAB 4: AGENT 4 (VENDOR INFLATION WITH RED HIGH-SPEND HIGHLIGHTS) ---
+# --- TAB 4: AGENT 4 (VENDOR INFLATION) ---
 with tab4:
     st.subheader("📈 Agent 4: Vendor Cost Creep & SaaS Inflation AI")
-    st.write(f"Audits supplier pricing and **highlights abnormal vendor price spikes in bright red**.")
+    st.write(f"Audits supplier pricing and highlights abnormal vendor price spikes in bright red.")
     
     master_df = get_user_master_df()
     if not master_df.empty and {'Category', 'Vendor', 'Amount'}.issubset(master_df.columns):
@@ -319,10 +317,10 @@ with tab4:
     else:
         st.info("⏳ Waiting for pipeline data. Upload ledgers in Tab 1.")
 
-# --- TAB 5: AGENT 5 (COMPLIANCE DOSSIER WITH RED ERROR HIGHLIGHTS) ---
+# --- TAB 5: AGENT 5 (COMPLIANCE DOSSIER) ---
 with tab5:
     st.subheader("🔒 Agent 5: Statutory Audit Dossier & Compliance Vault AI")
-    st.write("Audits session logs and **highlights system errors or security warnings in red**.")
+    st.write("Audits session logs and highlights system events or security entries in red.")
     
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -341,7 +339,7 @@ with tab5:
                 
             styled_audit = audit_df.style.apply(highlight_audit_errors, axis=1)
             st.dataframe(styled_audit, use_container_width=True)
-            st.success("🧠 [Agent 5 Active]: Audit dossier compiled with real-time red threat surveillance.")
+            st.success("🧠 [Agent 5 Active]: Audit dossier compiled with real-time threat surveillance.")
         else:
             st.info("⏳ Audit dossier initializing. Run pipeline in Tab 1.")
     except Exception as e:
